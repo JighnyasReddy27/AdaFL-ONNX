@@ -130,25 +130,45 @@ class FIA(nn.Module):
 
         results = []
         for i in range(B):
-            R1_num = int(R1_agg_num[i].item())
-            R2_num = int(R2_agg_num[i].item())
-            R3_num = int(R3_agg_num[i].item())    
+            if globals().get("EXPORT_MODE", False):
+                R1_num = 106
+                R2_num = 106
+                R3_num = 108
+            else:
+                R1_num = int(R1_agg_num[i].item())
+                R2_num = int(R2_agg_num[i].item())
+                R3_num = int(R3_agg_num[i].item())  
             agg_tokens_R1 = self.aggregation_tokens(R1_tokens[i], R1_num, R1_scoremap[i], k=int(math.sqrt(R1_num)))  #b,n,c
             agg_tokens_R2 = self.aggregation_tokens(R2_tokens[i], R2_num, R2_scoremap[i], k=int(math.sqrt(R2_num)))  #b,n,c
             agg_tokens_R3 = self.aggregation_tokens(R3_tokens[i], R3_num, R3_scoremap[i], k=int(math.sqrt(R3_num)))  #b,n,c
             agg_tokens = torch.cat([agg_tokens_R1, agg_tokens_R2, agg_tokens_R3], dim=0)
             
             outputs = []
-            for idx in topk_indices[i]:
-                kv = self.kv_linears[idx](agg_tokens)
-                kv = kv.reshape(-1, 2, self.num_heads, C // self.num_heads).permute(1, 2, 0, 3)
-                k, v = kv[0], kv[1]
-                attn = (q[i] @ k.transpose(-2, -1)) * self.scale
-                attn = attn.softmax(dim=-1)
-                output = (attn @ v).transpose(1, 2)
-                
-                output = output.reshape(C, N).permute(1, 0)
-                outputs.append(output * weights[i, idx])
+            if globals().get("EXPORT_MODE", False):
+                topk_vals, topk_idx = torch.topk(weights[i], self.topk, dim=0)
+                mask = torch.zeros_like(weights[i])
+                mask.scatter_(0, topk_idx, 1.0)
+                expert_weights = weights[i] * mask
+                for expert_idx in range(self.num_experts):
+                    kv = self.kv_linears[expert_idx](agg_tokens)
+                    kv = kv.reshape(-1, 2, self.num_heads, C // self.num_heads).permute(1, 2, 0, 3)
+                    k, v = kv[0], kv[1]
+                    attn = (q[i] @ k.transpose(-2, -1)) * self.scale
+                    attn = attn.softmax(dim=-1)
+                    output = (attn @ v).transpose(1, 2)
+                    output = output.reshape(C, N).permute(1, 0)
+                    outputs.append(output * expert_weights[expert_idx])
+            else:
+                for idx in topk_indices[i]:
+                    kv = self.kv_linears[idx](agg_tokens)
+                    kv = kv.reshape(-1, 2, self.num_heads, C // self.num_heads).permute(1, 2, 0, 3)
+                    k, v = kv[0], kv[1]
+                    attn = (q[i] @ k.transpose(-2, -1)) * self.scale
+                    attn = attn.softmax(dim=-1)
+                    output = (attn @ v).transpose(1, 2)
+                    
+                    output = output.reshape(C, N).permute(1, 0)
+                    outputs.append(output * weights[i, idx])
             results.append(sum(outputs))
         res = torch.stack(results)
         res = self.proj(res)
