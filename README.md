@@ -24,6 +24,23 @@ To test the AdaIFL, simply run ```test.py```. You can download the model checkpo
 python test.py --image image_path --model model_path --output output_path
 ```
 
+## ONNX Inference
+To improve deployment speed and cross-platform compatibility, this repository also includes scripts to convert and run the AdaIFL model in the ONNX format. 
+
+### 1. Exporting the Model to ONNX
+If you have downloaded the PyTorch checkpoint (`AdaIFL_v0.pth`), you can convert it to ONNX by running the provided export script:
+```bash
+python export_onnx.py
+```
+This script bypasses the dynamic tracing limitations of AdaIFL's Mixture of Experts (MoE) modules and generates `onnx_model/adaifl.onnx`.
+
+### 2. Testing with ONNXRuntime
+Once the ONNX model is exported, you can run inference using the `test_onnx.py` script. The script expects the model to be located in `onnx_model/adaifl.onnx` and demonstrates loading the model and running it on dummy input:
+```bash
+python test_onnx.py
+```
+*Note: Make sure to install the ONNX requirements (`pip install onnx onnxruntime onnxscript`) before running.*
+
 ## Citation
 If AdaIFL helps your research or work, please cite our paper.
 ```
